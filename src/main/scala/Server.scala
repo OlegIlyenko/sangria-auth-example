@@ -15,7 +15,7 @@ import de.heikoseeberger.akkahttpjson4s.Json4sSupport._
 
 import sangria.execution.Executor
 import sangria.parser.QueryParser
-import sangria.integration.Json4sSupport._
+import sangria.integration.json4s._
 
 import scala.concurrent.{Future, Await}
 import scala.util.{Failure, Success}
@@ -33,19 +33,26 @@ object Server extends App {
     val userRepo = new Data.UserRepo
     val colorRepo = new Data.ColorRepo
 
+
+    val schema = Schema.middlewareBased.schema
+
+    // Alternative approach
+    // val schema = Schema.resolveBased.schema
+
     val route: Route =
       (get & path("graphql")) {
-        parameters('query, 'args.?, 'operation.?) { (query, args, operation) =>
+        parameters('query, 'variables.?, 'operation.?) { (query, variables, operation) =>
           optionalHeaderValueByName("SecurityToken") { token =>
             QueryParser.parse(query) match {
 
               // query parsed successfully, time to execute it!
               case Success(queryAst) =>
-                complete(Executor.execute(Schema.schema, queryAst,
+                complete(Executor.execute(schema, queryAst,
                   userContext = new Data.SecureContext(token, userRepo, colorRepo),
                   exceptionHandler = Data.errorHandler,
+                  middleware = Schema.middlewareBased.SecurityEnforcer :: Nil,
                   operationName = operation,
-                  arguments = args flatMap (parseOpt(_, true))))
+                  variables = variables map (parse(_, true)) getOrElse JObject()))
 
               // can't parse GraphQL query, return error
               case Failure(error) =>

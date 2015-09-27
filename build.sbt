@@ -6,7 +6,7 @@ description := "An example GraphQL server written with akka-http and sangria tha
 scalaVersion := "2.11.7"
 
 libraryDependencies ++= Seq(
-  "org.sangria-graphql" %% "sangria" % "0.3.0",
+  "org.sangria-graphql" %% "sangria" % "0.4.0",
   "com.typesafe.akka" %% "akka-http-experimental" % "1.0",
   "org.json4s" %% "json4s-native" % "3.2.11",
   "de.heikoseeberger" %% "akka-http-json4s" % "1.0.0"
