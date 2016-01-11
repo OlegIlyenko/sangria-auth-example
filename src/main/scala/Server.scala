@@ -1,5 +1,7 @@
 import akka.actor.ActorSystem
 
+import language.postfixOps
+
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.Uri.Query
 import akka.http.scaladsl.model.{Uri, HttpRequest}
