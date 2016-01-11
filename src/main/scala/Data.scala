@@ -1,7 +1,7 @@
 import java.util.UUID
 
 import sangria.execution.HandledException
-import sangria.integration.ResultMarshaller
+import sangria.marshalling.ResultMarshaller
 
 object Data {
   case class User(userName: String, permissions: List[String])
@@ -13,11 +13,11 @@ object Data {
     def authenticate(userName: String, password: String): Option[String] =
       if (userName == "admin" && password == "secret") {
         val token = UUID.randomUUID().toString
-        tokens = tokens + (token -> User("admin", "VIEW_PERMISSIONS" :: "EDIT_COLORS" :: "VIEW_COLORS" :: Nil))
+        tokens = tokens + (token → User("admin", "VIEW_PERMISSIONS" :: "EDIT_COLORS" :: "VIEW_COLORS" :: Nil))
         Some(token)
       } else if (userName == "john" && password == "apples") {
         val token = UUID.randomUUID().toString
-        tokens = tokens + (token -> User("john", "VIEW_COLORS" :: Nil))
+        tokens = tokens + (token → User("john", "VIEW_COLORS" :: Nil))
         Some(token)
       } else None
 
@@ -39,14 +39,14 @@ object Data {
     def login(userName: String, password: String) = userRepo.authenticate(userName, password) getOrElse (
         throw new AuthenticationException("UserName or password is incorrect"))
 
-    def authorised[T](permissions: String*)(fn: User => T) =
-      token.flatMap(userRepo.authorise).fold(throw AuthorisationException("Invalid token")) { user =>
+    def authorised[T](permissions: String*)(fn: User ⇒ T) =
+      token.flatMap(userRepo.authorise).fold(throw AuthorisationException("Invalid token")) { user ⇒
         if (permissions.forall(user.permissions.contains)) fn(user)
         else throw AuthorisationException("You do not have permission to do this operation")
       }
 
     def ensurePermissions(permissions: List[String]): Unit =
-      token.flatMap(userRepo.authorise).fold(throw AuthorisationException("Invalid token")) { user =>
+      token.flatMap(userRepo.authorise).fold(throw AuthorisationException("Invalid token")) { user ⇒
         if (!permissions.forall(user.permissions.contains))
           throw AuthorisationException("You do not have permission to do this operation")
       }
@@ -55,7 +55,7 @@ object Data {
   }
 
   val errorHandler: PartialFunction[(ResultMarshaller, Throwable), HandledException] = {
-    case (m, AuthenticationException(message)) => HandledException(message)
-    case (m, AuthorisationException(message)) => HandledException(message)
+    case (m, AuthenticationException(message)) ⇒ HandledException(message)
+    case (m, AuthorisationException(message)) ⇒ HandledException(message)
   }
 }

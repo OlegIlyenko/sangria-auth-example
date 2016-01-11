@@ -1,21 +1,22 @@
 import akka.actor.ActorSystem
+
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{HttpHeader, Uri, HttpRequest}
+import akka.http.scaladsl.model.Uri.Query
+import akka.http.scaladsl.model.{Uri, HttpRequest}
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server._
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.unmarshalling.Unmarshal
+
 import akka.stream.ActorMaterializer
 
-import org.json4s.native.JsonMethods._
-import org.json4s._
-
-import de.heikoseeberger.akkahttpjson4s.Json4sSupport._
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+import spray.json._
 
 import sangria.execution.Executor
 import sangria.parser.QueryParser
-import sangria.integration.json4s._
+import sangria.integration.sprayJson._
 
 import scala.concurrent.{Future, Await}
 import scala.util.{Failure, Success}
@@ -24,8 +25,6 @@ import scala.concurrent.duration._
 object Server extends App {
   implicit val system = ActorSystem("sangria")
   implicit val materializer = ActorMaterializer()
-  implicit val serialization = native.Serialization
-  implicit val formats = DefaultFormats
 
   import system.dispatcher
 
@@ -41,22 +40,22 @@ object Server extends App {
 
     val route: Route =
       (get & path("graphql")) {
-        parameters('query, 'variables.?, 'operation.?) { (query, variables, operation) =>
-          optionalHeaderValueByName("SecurityToken") { token =>
+        parameters('query, 'variables.?, 'operation.?) { (query, variables, operation) ⇒
+          optionalHeaderValueByName("SecurityToken") { token ⇒
             QueryParser.parse(query) match {
 
               // query parsed successfully, time to execute it!
-              case Success(queryAst) =>
+              case Success(queryAst) ⇒
                 complete(Executor.execute(schema, queryAst,
                   userContext = new Data.SecureContext(token, userRepo, colorRepo),
                   exceptionHandler = Data.errorHandler,
                   middleware = Schema.middlewareBased.SecurityEnforcer :: Nil,
                   operationName = operation,
-                  variables = variables map (parse(_, true)) getOrElse JObject()))
+                  variables = variables map (_.parseJson) getOrElse JsObject.empty))
 
               // can't parse GraphQL query, return error
-              case Failure(error) =>
-                complete(BadRequest, JObject("error" -> JString(error.getMessage)))
+              case Failure(error) ⇒
+                complete(BadRequest, JsObject("error" → JsString(error.getMessage)))
             }
 
           }
@@ -67,8 +66,8 @@ object Server extends App {
   }
 
   def clientExampleRequests() = {
-    def printResult(query: String, result: Future[JValue]) =
-      println(s"Query:\n\n$query\n\nResult:\n\n${pretty(render(Await.result(result, 5 seconds)))}\n\n")
+    def printResult(query: String, result: Future[JsValue]) =
+      println(s"Query:\n\n$query\n\nResult:\n\n${Await.result(result, 5 seconds).prettyPrint}\n\n")
 
     // invalid token
     {
@@ -80,10 +79,10 @@ object Server extends App {
         }
         """
 
-      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> query))
+      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → query)))
         .withHeaders(RawHeader("SecurityToken", "some invalid token")))
 
-      printResult(query, result.flatMap(Unmarshal(_).to[JValue]))
+      printResult(query, result.flatMap(Unmarshal(_).to[JsValue]))
 
       // Prints:
       //
@@ -119,8 +118,8 @@ object Server extends App {
         }
         """
 
-      val loginResult = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> loginQuery)))
-        .flatMap(Unmarshal(_).to[JValue])
+      val loginResult = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → loginQuery))))
+        .flatMap(Unmarshal(_).to[JsValue])
 
       printResult(loginQuery, loginResult)
 
@@ -132,7 +131,7 @@ object Server extends App {
       //   }
       // }
 
-      val JString(token) = Await.result(loginResult, 5 seconds) \ "data" \ "login"
+      val JsString(token) = Await.result(loginResult, 5 seconds).asJsObject.fields("data").asJsObject.fields("login")
 
       val query =
         """
@@ -142,10 +141,10 @@ object Server extends App {
         }
         """
 
-      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> query))
+      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → query)))
         .withHeaders(RawHeader("SecurityToken", token)))
 
-      printResult(query, result.flatMap(Unmarshal(_).to[JValue]))
+      printResult(query, result.flatMap(Unmarshal(_).to[JsValue]))
 
       // Prints:
       //
@@ -169,8 +168,8 @@ object Server extends App {
         }
         """
 
-      val loginResult = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> loginQuery)))
-          .flatMap(Unmarshal(_).to[JValue])
+      val loginResult = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → loginQuery))))
+          .flatMap(Unmarshal(_).to[JsValue])
 
       printResult(loginQuery, loginResult)
 
@@ -182,7 +181,7 @@ object Server extends App {
       //   }
       // }
 
-      val JString(token) = Await.result(loginResult, 5 seconds) \ "data" \ "login"
+      val JsString(token) = Await.result(loginResult, 5 seconds).asJsObject.fields("data").asJsObject.fields("login")
 
       val query =
         """
@@ -192,10 +191,10 @@ object Server extends App {
         }
         """
 
-      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> query))
+      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → query)))
           .withHeaders(RawHeader("SecurityToken", token)))
 
-      printResult(query, result.flatMap(Unmarshal(_).to[JValue]))
+      printResult(query, result.flatMap(Unmarshal(_).to[JsValue]))
 
       // Prints:
       //
@@ -231,9 +230,9 @@ object Server extends App {
         }
         """
 
-      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> query)))
+      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → query))))
 
-      printResult(query, result.flatMap(Unmarshal(_).to[JValue]))
+      printResult(query, result.flatMap(Unmarshal(_).to[JsValue]))
 
       // Prints:
       //
@@ -258,9 +257,9 @@ object Server extends App {
         }
         """
 
-      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> query)))
+      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → query))))
 
-      printResult(query, result.flatMap(Unmarshal(_).to[JValue]))
+      printResult(query, result.flatMap(Unmarshal(_).to[JsValue]))
 
       // Prints:
       //
@@ -307,9 +306,9 @@ object Server extends App {
         }
         """
 
-      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery("query" -> query)))
+      val result = Http().singleRequest(HttpRequest(uri = Uri("http://localhost:8080/graphql").withQuery(Query("query" → query))))
 
-      printResult(query, result.flatMap(Unmarshal(_).to[JValue]))
+      printResult(query, result.flatMap(Unmarshal(_).to[JsValue]))
 
       // Prints:
       //

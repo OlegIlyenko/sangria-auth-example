@@ -11,15 +11,15 @@ object Schema {
     val UserType = ObjectType("User", fields[SecureContext, User](
       Field("userName", StringType, resolve = _.value.userName),
       Field("permissions", OptionType(ListType(StringType)),
-        resolve = ctx => ctx.ctx.authorised("VIEW_PERMISSIONS") { _ =>
+        resolve = ctx ⇒ ctx.ctx.authorised("VIEW_PERMISSIONS") { _ ⇒
           ctx.value.permissions
         })
     ))
 
     val QueryType = ObjectType("Query", fields[SecureContext, Unit](
-      Field("me", OptionType(UserType), resolve = ctx => ctx.ctx.authorised()(user => user)),
+      Field("me", OptionType(UserType), resolve = ctx ⇒ ctx.ctx.authorised()(user ⇒ user)),
       Field("colors", OptionType(ListType(StringType)),
-        resolve = ctx => ctx.ctx.authorised("VIEW_COLORS") { _ =>
+        resolve = ctx ⇒ ctx.ctx.authorised("VIEW_COLORS") { _ ⇒
           ctx.ctx.colorRepo.colors
         })
     ))
@@ -27,12 +27,12 @@ object Schema {
     val MutationType = ObjectType("Mutation", fields[SecureContext, Unit](
       Field("login", OptionType(StringType),
         arguments = UserNameArg :: PasswordArg :: Nil,
-        resolve = ctx => UpdateCtx(ctx.ctx.login(ctx.arg(UserNameArg), ctx.arg(PasswordArg))) { token =>
+        resolve = ctx ⇒ UpdateCtx(ctx.ctx.login(ctx.arg(UserNameArg), ctx.arg(PasswordArg))) { token ⇒
           ctx.ctx.copy(token = Some(token))
         }),
       Field("addColor", OptionType(ListType(StringType)),
         arguments = ColorArg :: Nil,
-        resolve = ctx => ctx.ctx.authorised("EDIT_COLORS") { _ =>
+        resolve = ctx ⇒ ctx.ctx.authorised("EDIT_COLORS") { _ ⇒
           ctx.ctx.colorRepo.addColor(ctx.arg(ColorArg))
           ctx.ctx.colorRepo.colors
         })
@@ -45,23 +45,25 @@ object Schema {
     case object Authorised extends FieldTag
     case class Permission(name: String) extends FieldTag
 
-    object SecurityEnforcer extends Middleware with MiddlewareBeforeField {
+    object SecurityEnforcer extends Middleware[SecureContext] with MiddlewareBeforeField[SecureContext] {
       type QueryVal = Unit
       type FieldVal = Unit
 
-      def beforeQuery(context: MiddlewareQueryContext[_, _]) = ()
-      def afterQuery(queryVal: QueryVal, context: MiddlewareQueryContext[_, _]) = ()
+      def beforeQuery(context: MiddlewareQueryContext[SecureContext, _, _]) = ()
+      def afterQuery(queryVal: QueryVal, context: MiddlewareQueryContext[SecureContext, _, _]) = ()
 
-      def beforeField(queryVal: QueryVal, mctx: MiddlewareQueryContext[_, _], ctx: Context[_, _]) = {
-        val permissions = ctx.field.tags.collect {case Permission(p) => p}
+      def beforeField(queryVal: QueryVal, mctx: MiddlewareQueryContext[SecureContext, _, _], ctx: Context[SecureContext, _]) = {
+        val permissions = ctx.field.tags.collect {case Permission(p) ⇒ p}
         val requireAuth = ctx.field.tags contains Authorised
-        val securityCtx = ctx.ctx.asInstanceOf[SecureContext]
+        val securityCtx = ctx.ctx
 
         if (requireAuth)
           securityCtx.user
 
         if (permissions.nonEmpty)
           securityCtx.ensurePermissions(permissions)
+
+        continue
       }
     }
 
@@ -81,13 +83,13 @@ object Schema {
     val MutationType = ObjectType("Mutation", fields[SecureContext, Unit](
       Field("login", OptionType(StringType),
         arguments = UserNameArg :: PasswordArg :: Nil,
-        resolve = ctx => UpdateCtx(ctx.ctx.login(ctx.arg(UserNameArg), ctx.arg(PasswordArg))) { token =>
+        resolve = ctx ⇒ UpdateCtx(ctx.ctx.login(ctx.arg(UserNameArg), ctx.arg(PasswordArg))) { token ⇒
           ctx.ctx.copy(token = Some(token))
         }),
       Field("addColor", OptionType(ListType(StringType)),
         arguments = ColorArg :: Nil,
         tags = Permission("EDIT_COLORS") :: Nil,
-        resolve = ctx => {
+        resolve = ctx ⇒ {
           ctx.ctx.colorRepo.addColor(ctx.arg(ColorArg))
           ctx.ctx.colorRepo.colors
         })
