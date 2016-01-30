@@ -18,7 +18,7 @@ import spray.json._
 
 import sangria.execution.Executor
 import sangria.parser.QueryParser
-import sangria.integration.sprayJson._
+import sangria.marshalling.sprayJson._
 
 import scala.concurrent.{Future, Await}
 import scala.util.{Failure, Success}
